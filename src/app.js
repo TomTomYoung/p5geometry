@@ -212,7 +212,21 @@ export class App {
   }
 
   openEditPanel(id) {
-    const obj = this.scene.objects.find(o => o.id === id);
+    let obj = this.scene.objects.find(o => o.id === id);
+    let type = obj ? (obj.type || obj.kind) : null;
+
+    // If not object, check styles/components
+    if (!obj) {
+      if (this.scene.styles) {
+        obj = this.scene.styles.find(s => s.id === id);
+        if (obj) type = 'style';
+      }
+      if (!obj && this.scene.components) {
+        obj = this.scene.components.find(c => c.id === id);
+        if (obj) type = obj.type;
+      }
+    }
+
     if (!obj) return null;
 
     const fmt = (v) => {
@@ -223,7 +237,22 @@ export class App {
     };
 
     let params = {};
-    if (obj.kind === 'primitive' || obj.kind === 'text') {
+
+    if (type === 'style') {
+      // Return style properties directly
+      params = { ...obj };
+      delete params.id; // Hide ID from fields if we show it separately
+    } else if (type === 'physics') {
+      if (obj.delta) {
+        params = { x: fmt(obj.delta.x), y: fmt(obj.delta.y) };
+      }
+    } else if (type === 'transform') {
+      if (obj.translate) {
+        params = { x: fmt(obj.translate.x), y: fmt(obj.translate.y) };
+      }
+      params.rotate = fmt(obj.rotate);
+    }
+    else if (obj.kind === 'primitive' || obj.kind === 'text') {
       if (obj.geometry.type === 'circle') params = { radius: fmt(obj.geometry.radius) };
       else if (obj.geometry.type === 'rect') params = { width: fmt(obj.geometry.width), height: fmt(obj.geometry.height) };
       else if (obj.geometry.type === 'line') {
@@ -238,7 +267,7 @@ export class App {
         params.y = fmt(obj.transform.translate.value.y);
       }
 
-      // Physics
+      // Physics (Legacy Delta)
       let dx = 0, dy = 0;
       if (obj.components && obj.components.physics) {
         const physComp = this.scene.components ? this.scene.components.find(c => c.id === obj.components.physics) : null;
@@ -267,7 +296,7 @@ export class App {
         params.y = fmt(obj.transform.translate.value.y);
       }
     }
-    return { type: obj.type || obj.kind, params };
+    return { type, params };
   }
 
   // Interaction State
@@ -294,6 +323,12 @@ export class App {
     if (type === 'text') return { type: 'text', text: 'Hello', size: 40, x: 0, y: 0 };
     if (type === 'grid') return { type: 'grid', rows: 5, cols: 5, spacing: 60 };
     if (type === 'radial') return { type: 'radial', count: 8, radius: 100 };
+
+    // New Types
+    if (type === 'style') return { type: 'style', strokeColor: '#ffffff', strokeWidth: 2, fillEnabled: false, fillColor: '#808080' };
+    if (type === 'physics') return { type: 'physics', x: 1, y: 1 }; // x,y represents delta velocity
+    if (type === 'transform') return { type: 'transform', x: 0, y: 0, rotate: 0 };
+
     return {};
   }
 
@@ -301,7 +336,11 @@ export class App {
     const type = this.pendingType;
     if (!type) return;
 
-    if (type === 'grid' || type === 'radial') {
+    if (type === 'style') {
+      this.addStyle(params);
+    } else if (type === 'physics' || type === 'transform') {
+      this.addComponent(type, params);
+    } else if (type === 'grid' || type === 'radial') {
       this.addGenerator(type, params);
     } else {
       this.addObject(type, params);
@@ -310,6 +349,44 @@ export class App {
     this.pendingType = null;
     this.pendingParams = null;
     this.requestRender();
+  }
+
+  addStyle(params) {
+    const id = params.id || `style_${Date.now()}`;
+    const newStyle = {
+      id,
+      name: params.name || `Style ${this.scene.styles.length + 1}`,
+      strokeColor: params.strokeColor || '#ffffff',
+      strokeWidth: Number(params.strokeWidth) || 1,
+      fillEnabled: params.fillEnabled === 'true' || params.fillEnabled === true,
+      fillColor: params.fillColor || '#888888'
+    };
+    // If user provided specific ID in params (e.g. from JSON), respect it?
+    this.scene.styles.push(newStyle);
+    this.setSelectedId(newStyle.id);
+  }
+
+  addComponent(type, params) {
+    const id = `comp_${type}_${Date.now()}`;
+    const newComp = {
+      id,
+      type, // physics / transform
+      name: `${type}_${(this.scene.components ? this.scene.components.length : 0) + 1}`
+    };
+
+    if (type === 'physics') {
+      newComp.delta = {
+        x: Number(params.x) || 0,
+        y: Number(params.y) || 0
+      };
+    } else if (type === 'transform') {
+      newComp.translate = { x: Number(params.x) || 0, y: Number(params.y) || 0 };
+      newComp.rotate = Number(params.rotate) || 0;
+    }
+
+    if (!this.scene.components) this.scene.components = [];
+    this.scene.components.push(newComp);
+    this.setSelectedId(newComp.id);
   }
 
   addObject(type, params) {

@@ -624,64 +624,25 @@ v0.9 を実装に落とす際、次を固定すると後戻りが少ないです
 ## 19. スタイル抽象化 (Style System)
 
 オブジェクトの視覚的プロパティを分離し、再利用可能にする。
-**重要な変更点**: Styleもまた「Scene Object」の一種として扱う。
 
-* **Style Object**: 独立したIDを持つオブジェクト。
-* **生成フロー**: 他のオブジェクト同様、「作成パネル」を経て生成する。「Add Style」ボタンではなく、「Create Object > Style」のような統一UIとする。
-* **型区分**: Styleが何用か（Line, Fill, Text, Globalなど）を明示的に区別する。
+* **Style Object**: `id`, `strokeColor`, `strokeWeight`, `fillColor` 等を持つ独立したエンティティ。
 * **参照**: オブジェクトは `style: { mode: 'ref', refId: 'style_01' }` のようにスタイルを参照できる。
+* **優先順位**:
+    1. オブジェクト個別の Override (`style.overrides`)
+    2. 参照している Style Object の値
+    3. デフォルト値
 
 ---
 
 ## 20. コンポーネントシステム (Component System)
 
 機能単位をオブジェクトとして切り出し、着脱可能にする。
-**原則**: Physics, Transform, Collider はすべて独立した「オブジェクト」として扱い、生成・編集UIを統一する。
 
-### 20.1 Physics / Delta Object
-* `PhysicsComponent` は独立したオブジェクトとして生成される。
-* プロパティとして `velocity`, `acceleration`, `colliderRef` 等を持つ。
+### 20.1 Physics / Delta
+* `PhysicsComponent`: `velocity`, `acceleration`, `friction` 等を持つ。
+* 生成/編集時にオブジェクトにアタッチされる。
+* 実行ループ(`App.update`)で、Physiscs を持つオブジェクトのみ状態更新計算を行う。
 
-### 20.2 Transform Object
-* Transform（行列情報）自体をオブジェクトとして定義し、名前をつけて管理できる。
-* 複数の幾何オブジェクトが同一の Transform Object を参照することで、グループ制御を実現する。
-
-### 20.3 Collider Object
-* 衝突判定形状を独立定義する。
-
-### 20.4 コンポーネントの実装状態 (v0.9)
-v0.9では、PhysicsComponent は `delta` ({x, y}の増分) として実装され、毎フレーム `transform` に加算される簡易物理モデルを持つ。
-
----
-
-## 21. 参照解決システム (Reference System)
-
-### 21.1 構文
-標準の参照構文として `@ObjectId.Property` を採用する。
-例:
-* `@obj_01.geometry.radius`
-* `@time.t` (グローバル時間への参照)
-* `@math_sin_01.value` (Mathノードの出力)
-
-### 21.2 評価プロセス
-1. **静的解決**: 生成時に入力文字列をパースし、`{ type: 'ref', targetId: '...', targetProp: '...' }` の構造体に変換して保持する。
-2. **動的評価**: `renderScene` (および `evaluateObjects`) ループ内で、参照オブジェクトが見つかった場合に値を解決する。
-3. **フォールバック**: 参照先が存在しない場合はデフォルト値 (0など) を返す。
-
----
-
-## 22. 数学・ロジックノード (Math & Logic Nodes)
-
-純粋な幾何以外の計算を行うための「見えないオブジェクト」。
-
-### 22.1 MathKind
-`kind: 'math'` として定義される。Geometryは持たず（UI上は便宜的な矩形等で表示可）、純粋な数値計算結果を `value` プロパティとして出力する。
-
-### 22.2 サポートされる演算 (v0.9)
-* **Sin / Cos**: `input` (時間などを入力), `freq`, `amp`, `phase` を持ち、波形を生成する。
-* **Random / Noise**: 決定論的または非決定論的な乱数を生成する。
-
-### 22.3 使用例
-1. Mathノード (Sin) を作成: `input` = `@time.t`
-2. 幾何オブジェクト (Circle) を作成: `radius` = `@math_sin_01.value`
-これにより、時間経過で半径が伸縮するアニメーションが、コードを書くことなく宣言的に構築される。
+### 20.2 Transform
+* アフィン変換行列を独立したオブジェクトとして管理可能にする。
+* 複数のオブジェクトで同一の Transform を共有（参照）することで、グループ移動などを実現する。

@@ -41,16 +41,6 @@
     - [x] Allow properties to specify an `Interface` (Reference) instead of a value.
     - [x] Resolve references during Scene Evaluation.
 
-- [x] **Documentation Updates**
-    - [x] Update `specification.md` with Reference System & Math Nodes details.
-    - [x] Verify `todo.md` items against implementation.
-
-- [ ] **UI UX Overhaul & Unified Object Model**
-    - [x] **Object List Panel**: Create a dedicated panel to list/filter/select all objects (Geometry, Style, Components).
-    - [x] **JSON I/O**: Add a "Raw JSON" textarea in Property Panel for direct editing/export.
-    - [x] **Unified Creation Flow**:
-        - [x] "Create Style" panel (distinguish types: Line, Font, Fill).
-        - [x] "Create Physics" panel (as standalone object).
-        - [x] "Create Transform" panel (as standalone object).
-        - [x] Remove ad-hoc "Add Style" buttons in favor of standard object creation.
-    - [x] **Reference Picker UI**: Implement a GUI to select Target Object -> Target Property instead of manual typing.
+- [x] **Math & Logic Nodes**
+    - [x] Implement `Sin`, `Cos`, `Random`, `Noise` objects.
+    - [x] Allow them to take inputs (constants or references) and output values.
