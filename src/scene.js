@@ -506,6 +506,9 @@ function evaluateObjects(objects, t, assets, warnings, globalStyles) {
   const evaluated = [];
   const evaluatedMap = new Map(); // id -> EvaluatedObject
 
+  // Inject Global Time
+  evaluatedMap.set('time', { t: t, value: t }); // Support @time.t or just @time.value
+
   for (const obj of objects) {
     if (obj.visibility === false) continue;
 
@@ -557,6 +560,39 @@ function evaluateObjects(objects, t, assets, warnings, globalStyles) {
       evaluated.push(evalObj);
       evaluatedMap.set(obj.id, evalObj);
 
+      evaluated.push(evalObj);
+      evaluatedMap.set(obj.id, evalObj);
+
+    } else if (obj.kind === 'math') {
+      const input = resolveParam(obj.params.input, evaluatedMap) || 0;
+      let result = 0;
+
+      if (obj.type === 'sin') {
+        const freq = resolveParam(obj.params.freq, evaluatedMap) || 1;
+        const amp = resolveParam(obj.params.amp, evaluatedMap) || 1;
+        const phase = resolveParam(obj.params.phase, evaluatedMap) || 0;
+        result = Math.sin(input * freq + phase) * amp;
+      } else if (obj.type === 'cos') {
+        const freq = resolveParam(obj.params.freq, evaluatedMap) || 1;
+        const amp = resolveParam(obj.params.amp, evaluatedMap) || 1;
+        const phase = resolveParam(obj.params.phase, evaluatedMap) || 0;
+        result = Math.cos(input * freq + phase) * amp;
+      } else if (obj.type === 'noise') {
+        // Basic random noise or Perlin?
+        // p5 has noise(), but scene.js is pure JS ideally?
+        // If we access p5 instance... evaluateObjects is pure.
+        // Let's use simple Math.random() for 'random', or pseudo-noise.
+        // If obj.type is 'random', return random.
+        // If 'noise', we need a noise function.
+        // Let's just implement 'random' (static per frame? No, needs seed to be consistent per frame?)
+        // Or just return Math.random() which flickers.
+        result = Math.random() * (resolveParam(obj.params.amp, evaluatedMap) || 1);
+      }
+
+      // Math nodes output a 'value' property
+      const evalObj = { objectId: obj.id, value: result };
+      evaluated.push(evalObj);
+      evaluatedMap.set(obj.id, evalObj);
     } else {
       warnings.push(`Object ${obj.id} of kind ${obj.kind} evaluation not implemented`);
     }

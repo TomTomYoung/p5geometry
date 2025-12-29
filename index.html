@@ -57,10 +57,18 @@
         <section>
             <h3>Generators</h3>
             <div class="button-grid">
-                <button id="btn-gen-grid">Grid</button>
-                <button id="btn-gen-radial">Radial</button>
+                <button id="btn-gen-grid">Grid Layout</button>
+                <button id="btn-gen-radial">Radial Layout</button>
             </div>
             <div class="hint" id="selection-hint">Select an object to generate patterns</div>
+        </section>
+
+        <section>
+            <h3>Math</h3>
+            <div class="button-grid">
+                <button id="btn-add-sin">Sin Wave</button>
+                <button id="btn-add-cos">Cos Wave</button>
+            </div>
         </section>
 
         <section>
@@ -400,6 +408,10 @@
             document.getElementById('btn-gen-grid').onclick = () => openPanel('grid');
             document.getElementById('btn-gen-radial').onclick = () => openPanel('radial');
 
+            // Math Bindings
+            document.getElementById('btn-add-sin').onclick = () => openPanel('sin');
+            document.getElementById('btn-add-cos').onclick = () => openPanel('cos');
+
             // Scene Design Bindings
             const bgInput = document.getElementById('input-bg-color');
             if (bgInput) {
@@ -430,7 +442,8 @@
                 const panel = document.getElementById('property-panel');
                 const mode = panel.dataset.mode;
 
-                const fields = document.querySelectorAll('.prop-field input');
+                // FIX: Include select elements!
+                const fields = document.querySelectorAll('.prop-field input, .prop-field select');
                 const params = {};
                 fields.forEach(f => {
                     params[f.name] = f.value;
@@ -457,27 +470,75 @@
             title.innerText = isEdit ? `Edit ${type}` : `New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
             btnCreate.innerText = isEdit ? 'Update' : 'Create';
 
-            // Store edit mode state on the panel or app?
+            // Store edit mode state
             panel.dataset.mode = isEdit ? 'edit' : 'create';
 
             container.innerHTML = '';
 
-            // Dynamic fields creation based on params
+            // 1. Display ID (Edit Mode Only)
+            if (isEdit) {
+                const idDiv = document.createElement('div');
+                idDiv.className = 'prop-field';
+                idDiv.style.borderBottom = '1px solid #444';
+                idDiv.style.paddingBottom = '5px';
+                idDiv.style.marginBottom = '10px';
+                const label = document.createElement('label');
+                label.innerText = 'ID';
+                const span = document.createElement('span');
+                span.innerText = app.getSelectedId();
+                span.style.fontFamily = 'monospace';
+                span.style.color = '#88ff88';
+                idDiv.appendChild(label);
+                idDiv.appendChild(span);
+                container.appendChild(idDiv);
+            }
+
+            // 2. Render Fields
+            // Group Physics?
+            // Simple iteration first, special check for styleId
+
             for (const [key, value] of Object.entries(params)) {
-                if (key === 'type') continue; // Skip internal type
+                if (key === 'type') continue;
 
                 const div = document.createElement('div');
                 div.className = 'prop-field';
 
                 const label = document.createElement('label');
-                label.innerText = key;
+                // Use nicer labels
+                label.innerText = key === 'moveX' ? 'Delta X' : key === 'moveY' ? 'Delta Y' : key;
 
-                const input = document.createElement('input');
-                input.name = key;
-                input.value = value;
-                // Simple type guess
-                if (typeof value === 'number') input.type = 'number';
-                else input.type = 'text';
+                let input;
+                if (key === 'styleId') {
+                    // Style Dropdown
+                    input = document.createElement('select');
+                    input.name = key;
+
+                    // Default/Local Option
+                    const defOpt = document.createElement('option');
+                    defOpt.value = '';
+                    defOpt.innerText = '(Local/None)';
+                    input.appendChild(defOpt);
+
+                    const styles = app.getStyles();
+                    styles.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s.id;
+                        opt.innerText = s.name || s.id;
+                        if (s.id === value) opt.selected = true;
+                        input.appendChild(opt);
+                    });
+                } else {
+                    input = document.createElement('input');
+                    input.name = key;
+                    input.value = value;
+                    if (typeof value === 'number') input.type = 'number';
+                    else input.type = 'text';
+
+                    // Placeholder for references
+                    if (key.startsWith('input') || key === 'radius' || key === 'x' || key === 'y') {
+                        input.placeholder = "Value or @Obj.Prop";
+                    }
+                }
 
                 div.appendChild(label);
                 div.appendChild(input);

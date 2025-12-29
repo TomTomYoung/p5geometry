@@ -211,11 +211,79 @@ export class App {
     this.requestRender();
   }
 
+  openEditPanel(id) {
+    const obj = this.scene.objects.find(o => o.id === id);
+    if (!obj) return null;
+
+    const fmt = (v) => {
+      if (v && typeof v === 'object' && v.type === 'ref') {
+        return `@${v.targetId}.${v.targetProp}`;
+      }
+      return v;
+    };
+
+    let params = {};
+    if (obj.kind === 'primitive' || obj.kind === 'text') {
+      if (obj.geometry.type === 'circle') params = { radius: fmt(obj.geometry.radius) };
+      else if (obj.geometry.type === 'rect') params = { width: fmt(obj.geometry.width), height: fmt(obj.geometry.height) };
+      else if (obj.geometry.type === 'line') {
+        const p0 = obj.geometry.points ? obj.geometry.points[0] : { x: 0, y: 0 };
+        const p1 = obj.geometry.points ? obj.geometry.points[1] : { x: 0, y: 0 };
+        params = { dx: Math.abs(p1.x - p0.x) * 2 };
+      }
+      else if (obj.geometry.type === 'text') params = { text: fmt(obj.geometry.text), size: fmt(obj.geometry.size) };
+
+      if (obj.transform && obj.transform.translate) {
+        params.x = fmt(obj.transform.translate.value.x);
+        params.y = fmt(obj.transform.translate.value.y);
+      }
+
+      // Physics
+      let dx = 0, dy = 0;
+      if (obj.components && obj.components.physics) {
+        const physComp = this.scene.components ? this.scene.components.find(c => c.id === obj.components.physics) : null;
+        if (physComp && physComp.delta) {
+          dx = physComp.delta.x;
+          dy = physComp.delta.y;
+        }
+      }
+      params.moveX = dx;
+      params.moveY = dy;
+
+      // Style
+      if (obj.style && obj.style.mode === 'ref') {
+        params.styleId = obj.style.refId;
+      } else {
+        params.styleId = '';
+      }
+
+    } else if (obj.kind === 'math') {
+      params.input = fmt(obj.params.input);
+      params.amp = fmt(obj.params.amp);
+      params.freq = fmt(obj.params.freq);
+      params.phase = fmt(obj.params.phase);
+      if (obj.transform && obj.transform.translate) {
+        params.x = fmt(obj.transform.translate.value.x);
+        params.y = fmt(obj.transform.translate.value.y);
+      }
+    }
+    return { type: obj.type || obj.kind, params };
+  }
+
   // Interaction State
   openCreationPanel(type) {
     this.pendingType = type;
-    this.pendingParams = this.getDefaultParams(type);
-    return this.pendingParams;
+    if (type === 'circle') return this.getDefaultParams('circle');
+    if (type === 'rect') return this.getDefaultParams('rect');
+    if (type === 'line') return this.getDefaultParams('line');
+    if (type === 'polygon') return this.getDefaultParams('polygon');
+    if (type === 'text') return this.getDefaultParams('text');
+    if (type === 'grid') return { rows: 5, cols: 5, spacing: 50 };
+    if (type === 'radial') return { count: 8, radius: 100 };
+    // Math
+    if (type === 'sin' || type === 'cos') return { input: '@time.t', amp: 100, freq: 0.1, phase: 0 };
+
+    return {};
   }
 
   getDefaultParams(type) {
@@ -242,6 +310,75 @@ export class App {
     this.pendingType = null;
     this.pendingParams = null;
     this.requestRender();
+  }
+
+  addObject(type, params) {
+    // Determine kind
+    let kind = 'primitive';
+    if (type === 'text') kind = 'text';
+    if (type === 'sin' || type === 'cos') kind = 'math';
+
+    const id = `obj_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+    const newObj = {
+      id,
+      kind,
+      name: `${type}_${this.scene.objects.length + 1}`,
+      visibility: true,
+      style: { strokeColor: '#ffffff', strokeWeight: 1, fillEnabled: false },
+      geometry: {},
+      params: {}, // For math nodes or generators
+      transform: { translate: { type: 'constant', value: { x: 0, y: 0 } } }
+    };
+
+    // Parse params helper
+    const parse = (v) => {
+      if (typeof v === 'string' && v.startsWith('@')) {
+        const parts = v.substring(1).split('.');
+        return { type: 'ref', targetId: parts[0], targetProp: parts[1] || 'value' };
+      }
+      return parseFloat(v);
+    };
+
+    if (kind === 'math') {
+      // Store raw params or parsed?
+      // We need to parse them to allow Refs.
+      newObj.type = type; // sin/cos
+      newObj.params = {
+        input: parse(params.input),
+        amp: parse(params.amp),
+        freq: parse(params.freq),
+        phase: parse(params.phase)
+      };
+      // Math nodes usually don't need geometry/transform in the same way,
+      // but having a visual representation (like a box) helps selection.
+      // Let's give it a dummy geometry for clicking.
+      newObj.geometry = { type: 'rect', width: 40, height: 40 }; // Visual placeholder
+      newObj.transform.translate.value = { x: 50, y: 50 }; // Default pos
+    }
+    else if (kind === 'primitive') {
+      // ... existing geometry creation ...
+      newObj.geometry = this.createPrimitiveGeometry(type, params);
+      // Set pos?
+      if (params.x) newObj.transform.translate.value.x = parseFloat(params.x);
+      if (params.y) newObj.transform.translate.value.y = parseFloat(params.y);
+    } else if (kind === 'text') {
+      // ...
+      newObj.geometry = {
+        type: 'text',
+        fontAssetId: 'default',
+        text: params.text || 'text',
+        size: parseFloat(params.size) || 40
+      };
+      if (params.x) newObj.transform.translate.value.x = parseFloat(params.x);
+      if (params.y) newObj.transform.translate.value.y = parseFloat(params.y);
+    }
+
+    this.scene.objects.push(newObj);
+    this.setSelectedId(newObj.id);
+    this.updateExecutionOrder();
+    this.requestRender();
+    return newObj;
   }
 
   confirmEdit(params) {
@@ -292,8 +429,25 @@ export class App {
       // Line/Poly - minimal ref support for now
 
     } else if (obj.kind === 'text') {
-      if (params.text) obj.geometry.text = parse(params.text, false); // false = not number forced
+      if (params.text) obj.geometry.text = parse(params.text, false);
       if (params.size) obj.geometry.size = parse(params.size);
+    } else if (obj.kind === 'math') {
+      // Update Math Params
+      if (params.input !== undefined) obj.params.input = parse(params.input);
+      if (params.amp !== undefined) obj.params.amp = parse(params.amp);
+      if (params.freq !== undefined) obj.params.freq = parse(params.freq);
+      if (params.phase !== undefined) obj.params.phase = parse(params.phase);
+    }
+
+    // Update Style Reference
+    if (params.styleId !== undefined) {
+      if (params.styleId) {
+        obj.style = { mode: 'ref', refId: params.styleId };
+      } else {
+        // Unlink: Reset to default local style
+        // Ideally we would detach and keep current visuals, but simpler to reset for now.
+        obj.style = { strokeColor: '#ffffff', strokeWeight: 1, fillEnabled: false };
+      }
     }
 
     // Update Delta (Physics Component)
@@ -378,6 +532,25 @@ export class App {
     this.scene.generators = [];
     this.updateExecutionOrder();
     this.requestRender();
+  }
+
+  setBackgroundColor(hex) {
+    this.scene.background.color = hex;
+    this.requestRender();
+  }
+
+  addStyle(params) {
+    const id = `style_${Date.now()}`;
+    const style = { id, ...params };
+    if (!this.scene.styles) this.scene.styles = [];
+    this.scene.styles.push(style);
+    console.log('Added Style:', style);
+    this.requestRender();
+    return style;
+  }
+
+  getStyles() {
+    return this.scene.styles || [];
   }
 
   createPrimitiveGeometry(type, params) {

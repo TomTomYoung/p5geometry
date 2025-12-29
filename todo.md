@@ -37,9 +37,9 @@
     - [x] Refactor `transform` into `Transform` objects.
     - [x] UI to attach/detach these components to objects.
 
-- [ ] **Reference System (Dependency Graph)**
-    - [ ] Allow properties to specify an `Interface` (Reference) instead of a value.
-    - [ ] Resolve references during Scene Evaluation.
+- [x] **Reference System (Dependency Graph)**
+    - [x] Allow properties to specify an `Interface` (Reference) instead of a value.
+    - [x] Resolve references during Scene Evaluation.
 
 - [ ] **Math & Logic Nodes**
     - [ ] Implement `Sin`, `Cos`, `Random`, `Noise` objects.
