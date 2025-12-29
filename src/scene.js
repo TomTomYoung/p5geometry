@@ -102,16 +102,16 @@ function applyRelations(objects, relations, t, warnings) {
     if (relation.enabled === false) continue;
     switch (relation.type) {
       case 'attach':
-        handleAttachRelation(/** @type {AttachRelation} */ (relation), byId, t, warnings);
+        handleAttachRelation(/** @type {AttachRelation} */(relation), byId, t, warnings);
         break;
       case 'align':
-        handleAlignRelation(/** @type {AlignRelation} */ (relation), byId, t, warnings);
+        handleAlignRelation(/** @type {AlignRelation} */(relation), byId, t, warnings);
         break;
       case 'followPath':
-        handleFollowPathRelation(/** @type {FollowPathRelation} */ (relation), byId, t, warnings);
+        handleFollowPathRelation(/** @type {FollowPathRelation} */(relation), byId, t, warnings);
         break;
       case 'repeat':
-        handleRepeatRelation(/** @type {RepeatRelation} */ (relation), byId, objects, t, warnings);
+        handleRepeatRelation(/** @type {RepeatRelation} */(relation), byId, objects, t, warnings);
         break;
       default:
         warnings.push(`Relation ${relation.id} of type ${relation.type} is not yet implemented`);
@@ -440,6 +440,151 @@ function evaluateObjects(objects, t, assets, warnings) {
 }
 
 /**
+ * Calculates the rank of each object in the scene based on dependencies.
+ * Rank 0: No dependencies (Constants).
+ * Rank N: Max(Dependency Ranks) + 1.
+ * @param {Scene} scene
+ * @returns {Map<string, number>} Map of object ID to Rank
+ */
+export function calculateGraphRanks(scene) {
+  const ranks = new Map();
+  const processing = new Set(); // For cycle detection
+
+  // Helper to get inputs of an object (this logic needs to be robust for all types)
+  function getInputs(obj) {
+    const inputs = [];
+    // 1. Generators (if the object IS a generator or produced by one? Currently objects are just objects)
+    // Wait, generators in this architecture are separate entities that Produce objects.
+    // But for v0.9 simplified, let's assume objects might verify references in their properties.
+    // For now, let's look at Generators list and see if this object is an output.
+    // Actually, the dependency graph is mainly for Generators and Operators.
+    // Objects themselves are mostly data unless they reference others.
+
+    // Let's check Generators inputs
+    const gen = scene.generators ? scene.generators.find(g => g.outputIds && g.outputIds.includes(obj.id)) : null;
+    if (gen && gen.inputIds) {
+      inputs.push(...gen.inputIds);
+    }
+
+    // Also check direct property references (Phase 4), but for now mainly Generators.
+    return inputs;
+  }
+
+  function visit(id) {
+    if (ranks.has(id)) return ranks.get(id);
+    if (processing.has(id)) {
+      console.warn(`Cycle detected involving object ${id}`);
+      return Infinity; // Cycle detected
+    }
+
+    processing.add(id);
+
+    const obj = scene.objects.find(o => o.id === id);
+    if (!obj) {
+      processing.delete(id);
+      return 0; // External or missing? Treat as 0 for now.
+    }
+
+    const inputIds = getInputs(obj);
+    let maxRank = -1;
+
+    for (const inputId of inputIds) {
+      const r = visit(inputId);
+      if (r > maxRank) maxRank = r;
+    }
+
+    const rank = maxRank + 1;
+    ranks.set(id, rank);
+    processing.delete(id);
+    return rank;
+  }
+
+  for (const obj of scene.objects) {
+    visit(obj.id);
+  }
+
+  return ranks;
+}
+
+/**
+ * Returns a flat list of objects sorted by Rank (Execution Order).
+ * @param {Scene} scene
+ * @returns {SceneObject[]}
+ */
+export function getSortedExecutionOrder(scene) {
+  const ranks = calculateGraphRanks(scene);
+
+  // Sort logic: Rank ascending. Stable sort for same rank.
+  // Create a copy to sort
+  const sorted = [...scene.objects].sort((a, b) => {
+    const ra = ranks.get(a.id) || 0;
+    const rb = ranks.get(b.id) || 0;
+    return ra - rb;
+  });
+
+  return sorted;
+}
+
+/**
+ * Validates if connection A -> B is valid (Cycle check).
+ * @param {Scene} scene
+ * @param {string} inputId
+ * @param {string} targetId
+ * @returns {boolean}
+ */
+export function validateConnection(scene, inputId, targetId) {
+  // Determine ranks if we were to connect.
+  // Actually, simpler: Does targetId (or its dependents) depend on inputId?
+  // If targetId is an ancestor of inputId, then inputId->targetId creates a cycle.
+
+  // Perform a reverse search from inputId: does it reach targetId?
+  // Wait, we want to connect Input -> Target.
+  // Cycle happens if Target reaches Input.
+
+  // Build adjacency list for traversal
+  const adj = new Map();
+  // Populate adj from generators
+  if (scene.generators) {
+    for (const gen of scene.generators) {
+      if (!gen.outputIds) continue;
+      for (const outId of gen.outputIds) {
+        // Out depends on In
+        if (!adj.has(outId)) adj.set(outId, []);
+        // Add inputs as parents (dependency)
+        // Actually let's track "Depends On" (Child -> Parent)
+        // outId -> [inId1, inId2...]
+        if (gen.inputIds) {
+          adj.get(outId).push(...gen.inputIds);
+        }
+      }
+    }
+  }
+
+  // BFS/DFS from inputId? No, we want to know if Target depends on Input. 
+  // Wait, if we add Input -> Target.
+  // Cycle if Target is ALREADY an ancestor of Input.
+  // Check if Input depends on Target.
+
+  const visited = new Set();
+  const stack = [inputId]; // Start from Input
+
+  while (stack.length > 0) {
+    const curr = stack.pop();
+    if (curr === targetId) return false; // Found Target in Input's ancestry
+
+    if (visited.has(curr)) continue;
+    visited.add(curr);
+
+    const parents = adj.get(curr) || [];
+    for (const p of parents) {
+      stack.push(p);
+    }
+  }
+
+  return true;
+}
+
+/**
  * @param {Operator[]} operators
  * @param {EvaluatedObject[]} objects
  * @param {number} t
@@ -458,17 +603,17 @@ function evaluateOperators(operators, objects, t, warnings) {
     }
     switch (op.type) {
       case 'affine':
-        outputs[op.outputRef] = evaluateAffineOperator(/** @type {AffineOperator} */ (op), inputs, t);
+        outputs[op.outputRef] = evaluateAffineOperator(/** @type {AffineOperator} */(op), inputs, t);
         break;
       case 'threshold':
-        outputs[op.outputRef] = evaluateThresholdOperator(/** @type {ThresholdOperator} */ (op), inputs);
+        outputs[op.outputRef] = evaluateThresholdOperator(/** @type {ThresholdOperator} */(op), inputs);
         break;
       case 'rasterize':
-        outputs[op.outputRef] = evaluateRasterizeOperator(/** @type {RasterizeOperator} */ (op), inputs);
+        outputs[op.outputRef] = evaluateRasterizeOperator(/** @type {RasterizeOperator} */(op), inputs);
         break;
       case 'erode':
       case 'dilate':
-        outputs[op.outputRef] = evaluateMorphOperator(/** @type {MorphOperator} */ (op), inputs, op.type === 'erode');
+        outputs[op.outputRef] = evaluateMorphOperator(/** @type {MorphOperator} */(op), inputs, op.type === 'erode');
         break;
       default:
         warnings.push(`Operator ${op.id} (${op.type}) not implemented`);

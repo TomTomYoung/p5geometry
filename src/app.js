@@ -1,5 +1,4 @@
-
-import { renderScene } from './scene.js';
+import { renderScene, getSortedExecutionOrder, validateConnection } from './scene.js';
 
 export class App {
   constructor(p5Instance) {
@@ -9,20 +8,42 @@ export class App {
       relations: [],
       generators: [],
       operators: [],
-      generators: [],
-      operators: [],
+      // New Architecture: Styles & Components
+      background: { color: '#222222' },
+      styles: [
+        { id: 'default_style', name: 'Default', strokeColor: '#ffffff', strokeWeight: 1, fillEnabled: false }
+      ],
+      components: [],
       assets: [
         { id: 'default', kind: 'font', source: 'sans-serif', loadState: 'ready' }
       ],
       renderConfig: { width: window.innerWidth, height: window.innerHeight },
-      timeline: { t: 0 }
+      timeline: { t: 0, isPlaying: false }
     };
+
+    // Execution Order List (Cache)
+    this.executionOrder = [];
 
     // Initial state
     this.selectedObjectId = null;
+    this.renderLoop = this.renderLoop.bind(this);
 
     // Initial redraw
+    this.updateExecutionOrder(); // Initial sort
     this.requestRender();
+  }
+
+  updateExecutionOrder() {
+    this.executionOrder = getSortedExecutionOrder(this.scene);
+    console.log('Execution Order Updated:', this.executionOrder.map(o => `${o.id} (Rank ?) `));
+  }
+
+  // Update loop
+  renderLoop() {
+    if (this.scene.timeline.isPlaying) {
+      this.p5.redraw();
+      requestAnimationFrame(this.renderLoop);
+    }
   }
 
   requestRender() {
@@ -31,6 +52,15 @@ export class App {
 
   getScene() {
     return this.scene;
+  }
+
+  // Use this for rendering instead of raw scene.objects
+  getRenderList() {
+    // If executionOrder is empty (e.g. cleared), fall back or re-sort
+    if (!this.executionOrder || this.executionOrder.length === 0) {
+      if (this.scene.objects.length > 0) this.updateExecutionOrder();
+    }
+    return this.executionOrder;
   }
 
   getSelectedId() {
@@ -115,6 +145,9 @@ export class App {
     this.scene.objects.push(newObj);
     this.setSelectedId(newObj.id);
     console.log('Added object:', newObj);
+
+    // Update Graph
+    this.updateExecutionOrder();
     this.requestRender();
     return newObj;
   }
@@ -126,6 +159,12 @@ export class App {
     }
     const sourceExists = this.scene.objects.some(o => o.id === this.selectedObjectId);
     if (!sourceExists) return;
+
+    // Validate Connection (Pre-check)
+    // Here we are creating a new Generator that connects Selected -> New Output.
+    // Since New Output is brand new, it cannot cause a cycle unless we are connecting TO an existing object (which we aren't here yet).
+    // So simple creation is safe. But if we supported "Connect to existing", we would need:
+    // if (!validateConnection(this.scene, this.selectedObjectId, targetId)) return;
 
     const id = `gen_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const generator = {
@@ -156,6 +195,17 @@ export class App {
     this.scene.generators.push(generator);
     console.log('Added generator:', generator);
 
+    // For now, Generators in v0.9 (implied) modify the scene by Adding objects? 
+    // Or does the Render phase evaluate them? 
+    // The previous implementation of `renderScene` (in scene.js, effectively) likely generated temp objects.
+    // If we want them to persist as nodes, we should probably let `renderScene` handle them dynamically.
+    // But for `updateExecutionOrder` to work, it needs to see "Output Objects".
+
+    // IMPORTANT: As per current scene.js logic (which we assume expands generators), 
+    // we should ensure the generated objects are part of the execution list IF they are persistent.
+    // If they are transient (render-time only), then they don't need sorting, just the Generator need to be sorted vs Input.
+
+    this.updateExecutionOrder();
     this.requestRender();
   }
 
@@ -163,6 +213,7 @@ export class App {
     this.scene.objects = [];
     this.scene.relations = [];
     this.scene.generators = [];
+    this.updateExecutionOrder();
     this.requestRender();
   }
 

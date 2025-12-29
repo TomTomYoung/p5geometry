@@ -235,23 +235,29 @@
             };
 
             p.draw = () => {
-                p.background(30);
-
                 // Draw grid for reference
                 drawGrid(p);
 
                 if (app) {
                     const scene = app.getScene();
+                    p.background(scene.background ? scene.background.color : 30); // Set background based on scene or default
                     p.push();
                     // Center origin
                     p.translate(p.width / 2, p.height / 2);
 
-                    // Render using PGR scene
-                    const result = PGR.renderScene(scene, 0);
+                    // Use sorted execution order for rendering
+                    // This ensures dependencies are drawn/evaluated in order
+                    const sortedObjects = app.getRenderList();
+                    const renderContext = { ...scene, objects: sortedObjects };
 
-                    renderEvaluatedObjects(p, result.objects);
+                    // Render using PGR scene with sorted objects
+                    const result = PGR.renderScene(renderContext, 0);
+
+                    renderEvaluatedObjects(p, result.objects, app.getSelectedId());
 
                     p.pop();
+                } else {
+                    p.background(30); // Default background if app is not initialized
                 }
             };
 
