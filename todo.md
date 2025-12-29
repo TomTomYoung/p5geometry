@@ -41,6 +41,6 @@
     - [x] Allow properties to specify an `Interface` (Reference) instead of a value.
     - [x] Resolve references during Scene Evaluation.
 
-- [ ] **Math & Logic Nodes**
-    - [ ] Implement `Sin`, `Cos`, `Random`, `Noise` objects.
-    - [ ] Allow them to take inputs (constants or references) and output values.
+- [x] **Math & Logic Nodes**
+    - [x] Implement `Sin`, `Cos`, `Random`, `Noise` objects.
+    - [x] Allow them to take inputs (constants or references) and output values.

@@ -263,14 +263,13 @@
                 bindUI(app);
             };
 
-            p.mousePressed = () => {
+            p.mousePressed = (e) => {
+                // Prevent canvas interaction if clicking UI
+                if (e.target.closest('#ui-panel')) return;
+
                 if (app) {
                     // Check if click is on canvas (not on UI)
-                    // Simple check: target is canvas
-                    // But p5 captures events globally?
-                    // Let's trust p5.mouseX are correct for canvas relative if canvas is full screen?
-                    // Actually handleMousePressed expects screen coords relative to canvas top-left?
-                    // p.mouseX, p.mouseY are relative to canvas.
+                    // ... existing logic ...
                     if (p.mouseX >= 0 && p.mouseX <= p.width && p.mouseY >= 0 && p.mouseY <= p.height) {
                         const hitInfo = app.handleMousePressed(p.mouseX, p.mouseY);
                         if (hitInfo && hitInfo.params) {
