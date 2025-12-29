@@ -66,7 +66,8 @@ export function renderScene(scene, t, overrideConfig) {
   const objects = expandGenerators(scene.generators || [], scene.objects || [], t, warnings);
   const relations = scene.relations || [];
   applyRelations(objects, relations, t, warnings);
-  const evaluatedObjects = evaluateObjects(objects, t, assetsReady, warnings);
+  // Pass scene.styles (if available) to evaluateObjects
+  const evaluatedObjects = evaluateObjects(objects, t, assetsReady, warnings, scene.styles);
   const operatorResults = evaluateOperators(scene.operators || [], evaluatedObjects, t, warnings);
   const mergedObjects = mergeOperatorResults(evaluatedObjects, operatorResults);
   return { objects: mergedObjects, warnings, config };
@@ -409,18 +410,54 @@ function tangentDirection(points, u) {
 }
 
 /**
+ * Resolves the style for an object, handling references and overrides.
+ * @param {SceneObject} obj
+ * @param {StyleSpec[]} styles
+ * @returns {StyleSpec}
+ */
+function resolveStyle(obj, styles) {
+  if (!obj.style) return undefined;
+
+  // If it's a direct style object (legacy/v0.9 schema where style was simple object)
+  if (obj.style.strokeColor || obj.style.fillColor || obj.style.mode === undefined) {
+    return obj.style;
+  }
+
+  // If it's a reference (New Architecture)
+  if (obj.style.mode === 'ref') {
+    const refId = obj.style.refId;
+    const baseStyle = styles.find(s => s.id === refId);
+    if (!baseStyle) return undefined; // or default?
+
+    // Merge overrides
+    if (obj.style.overrides) {
+      return { ...baseStyle, ...obj.style.overrides };
+    }
+    return baseStyle;
+  }
+
+  return obj.style;
+}
+
+/**
  * @param {SceneObject[]} objects
  * @param {number} t
  * @param {Record<string, Asset>} assets
  * @param {string[]} warnings
+ * @param {StyleSpec[]} [globalStyles]
  * @returns {EvaluatedObject[]}
  */
-function evaluateObjects(objects, t, assets, warnings) {
+function evaluateObjects(objects, t, assets, warnings, globalStyles) {
   const evaluated = [];
   for (const obj of objects) {
     if (obj.visibility === false) continue;
+
+    // Resolve Style (if globalStyles provided, otherwise use obj.style as is)
+    // Note: scene.styles needs to be passed down from renderScene
+    const style = globalStyles ? resolveStyle(obj, globalStyles) : obj.style;
+
     if (obj.kind === 'primitive') {
-      evaluated.push({ objectId: obj.id, geometry: evaluatePrimitiveGeometry(obj.geometry, obj.transform, t), style: obj.style });
+      evaluated.push({ objectId: obj.id, geometry: evaluatePrimitiveGeometry(obj.geometry, obj.transform, t), style: style });
     } else if (obj.kind === 'text') {
       const asset = assets[obj.geometry.fontAssetId];
       if (!asset || asset.loadState !== 'ready') {
@@ -718,17 +755,53 @@ function evaluateMorphOperator(op, inputs, erode) {
   return { type: 'raster', raster: { width, height, pixels: out, channel: input.raster.channel } };
 }
 
+// Exported hit test function
+/**
+ * Finds the object at the given point (top-most).
+ * @param {EvaluatedObject[]} objects
+ * @param {{x:number, y:number}} point
+ * @returns {string|null} Object ID or null
+ */
+export function findHitObject(objects, point) {
+  // Iterate in reverse render order (top to bottom)
+  for (let i = objects.length - 1; i >= 0; i--) {
+    const obj = objects[i];
+    if (!obj.geometry) continue;
+
+    // Transform point to local space? 
+    // Or transform geometry to world space?
+    // evaluatedPrimitiveGeometry usually returns world-space points if transform was passed to it.
+    // Let's check evaluatePrimitiveGeometry. 
+    // Assuming geometry.points are in World Space.
+
+    if (pointInsideGeometry(point, obj.geometry)) {
+      return obj.objectId;
+    }
+  }
+  return null;
+}
+
 function pointInsideGeometry(point, geometry) {
   switch (geometry.type) {
     case 'circle':
-      return isPointInPolygon(point, geometry.points);
+      // Circle geometry usually comes as points (polyline) from evaluatePrimitiveGeometry??
+      // Wait, evaluatePrimitiveGeometry for circle returns: { type: 'circle', radius: ... } OR polygon points?
+      // Let's check geometry.js behavior. 
+      // If it returns points, we use polygon check.
+      // If it preserves 'circle' type, we check radius.
+      // Assuming it might return 'circle' with center 0,0 changed by transform... 
+      // Actually, evaluatePrimitiveGeometry applies transform.
+      // If it returns points, easy. If circle, we need world center.
+      if (geometry.points) return isPointInPolygon(point, geometry.points);
+      // Fallback or explicit circle handling if implemented
+      return false;
     case 'rect':
     case 'polygon':
     case 'polyline':
     case 'line':
       return isPointInPolygon(point, geometry.points);
     case 'point':
-      return Math.abs(point.x) < 1e-6 && Math.abs(point.y) < 1e-6;
+      return Math.abs(point.x) < 5 && Math.abs(point.y) < 5; // Tolerance
     default:
       return false;
   }

@@ -63,6 +63,17 @@
             <div class="hint" id="selection-hint">Select an object to generate patterns</div>
         </section>
 
+        <section>
+            <h3>Scene Design</h3>
+            <div class="prop-field">
+                <label>Background</label>
+                <input type="color" id="input-bg-color" value="#222222">
+            </div>
+            <div class="button-grid">
+                <button id="btn-add-style">Add Style</button>
+            </div>
+        </section>
+
         <!-- Property Panel (Hidden by default, overlays or pushes content) -->
         <div id="property-panel" class="hidden">
             <h3 id="prop-panel-title">New Object</h3>
@@ -223,7 +234,8 @@
             let app = null;
 
             p.setup = () => {
-                p.createCanvas(window.innerWidth, window.innerHeight);
+                const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+                canvas.parent('canvas-container');
                 p.noLoop();
 
                 // Initialize App
@@ -232,6 +244,29 @@
 
                 // Bind UI
                 bindUI(app);
+            };
+
+            p.mousePressed = () => {
+                if (app) {
+                    // Check if click is on canvas (not on UI)
+                    // Simple check: target is canvas
+                    // But p5 captures events globally?
+                    // Let's trust p5.mouseX are correct for canvas relative if canvas is full screen?
+                    // Actually handleMousePressed expects screen coords relative to canvas top-left?
+                    // p.mouseX, p.mouseY are relative to canvas.
+                    if (p.mouseX >= 0 && p.mouseX <= p.width && p.mouseY >= 0 && p.mouseY <= p.height) {
+                        const hitInfo = app.handleMousePressed(p.mouseX, p.mouseY);
+                        if (hitInfo && hitInfo.params) {
+                            // Valid selection with params -> Open Panel
+                            renderPropPanel(app, hitInfo.type, hitInfo.params, true); // true for 'edit mode'
+                        } else if (hitInfo) {
+                            // Selected but maybe no edit params yet
+                        }
+
+                        // Always redraw to show selection state
+                        renderEvaluatedObjects(p, app.getRenderList(), app.getSelectedId());
+                    }
+                }
             };
 
             p.draw = () => {
@@ -356,30 +391,61 @@
             document.getElementById('btn-gen-grid').onclick = () => openPanel('grid');
             document.getElementById('btn-gen-radial').onclick = () => openPanel('radial');
 
+            // Scene Design Bindings
+            const bgInput = document.getElementById('input-bg-color');
+            if (bgInput) {
+                bgInput.oninput = (e) => {
+                    app.setBackgroundColor(e.target.value);
+                };
+            }
+
+            const btnAddStyle = document.getElementById('btn-add-style');
+            if (btnAddStyle) {
+                btnAddStyle.onclick = () => {
+                    // For now just add a random style to test
+                    app.addStyle({ name: 'Random Style', strokeColor: '#' + Math.floor(Math.random() * 16777215).toString(16) });
+                };
+            }
+
             // Panel Actions
             document.getElementById('btn-prop-cancel').onclick = () => {
                 document.getElementById('property-panel').classList.add('hidden');
             };
 
             document.getElementById('btn-prop-create').onclick = () => {
+                const panel = document.getElementById('property-panel');
+                const mode = panel.dataset.mode;
+
                 const fields = document.querySelectorAll('.prop-field input');
                 const params = {};
                 fields.forEach(f => {
                     params[f.name] = f.value;
                 });
-                app.confirmCreation(params);
+
+                if (mode === 'edit') {
+                    app.confirmEdit(params);
+                } else {
+                    app.confirmCreation(params);
+                }
+
                 document.getElementById('property-panel').classList.add('hidden');
                 updateSelectionHint(app);
             };
         }
 
-        function renderPropPanel(app, type, params) {
+        function renderPropPanel(app, type, params, isEdit = false) {
             const panel = document.getElementById('property-panel');
             const title = document.getElementById('prop-panel-title');
             const container = document.getElementById('prop-fields');
+            const btnCreate = document.getElementById('btn-prop-create');
 
             panel.classList.remove('hidden');
-            title.innerText = `New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            title.innerText = isEdit ? `Edit ${type}` : `New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            btnCreate.innerText = isEdit ? 'Update' : 'Create';
+
+            // Store edit mode state on the panel or app?
+            panel.dataset.mode = isEdit ? 'edit' : 'create';
+
             container.innerHTML = '';
 
             // Dynamic fields creation based on params

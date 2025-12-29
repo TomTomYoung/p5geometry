@@ -1,4 +1,4 @@
-import { renderScene, getSortedExecutionOrder, validateConnection } from './scene.js';
+import { renderScene, getSortedExecutionOrder, validateConnection, findHitObject } from './scene.js';
 
 export class App {
   constructor(p5Instance) {
@@ -48,6 +48,50 @@ export class App {
 
   requestRender() {
     this.p5.redraw();
+  }
+
+  getStyles() {
+    return this.scene.styles;
+  }
+
+  handleMousePressed(x, y) {
+    // Map screen coordinates to world coordinates (centered origin)
+    const worldX = x - this.scene.renderConfig.width / 2;
+    const worldY = y - this.scene.renderConfig.height / 2;
+
+    // Get currently evaluated objects (render list)
+    // We need the *Evaluated* geometry for hit testing, not the raw params.
+    // But renderScene returns evaluated objects inside `p.draw`.
+    // We need access to the latest RenderResult.
+    // Let's store the last render result or re-evaluate?
+    // Re-evaluating is safer for now.
+
+    // Note: We need the full evaluation chain including Styles & Transforms.
+    const scene = this.getScene();
+    const objects = this.getRenderList(); // Raw sorted objects
+
+    // We need to evaluate them to get world geometry
+    // Import evaluateObjects locally if allowed or move logic to scene.js
+    // Simpler: Trigger a "Pick" pass in scene.js using current state
+
+    // Or just cheat: The p5.draw loop has the result.
+    // But purely logic-side:
+    const result = renderScene(scene, this.scene.timeline.t);
+    const hitId = findHitObject(result.objects, { x: worldX, y: worldY });
+
+    if (hitId) {
+      this.setSelectedId(hitId);
+      console.log('Selected:', hitId);
+      // Open Property Panel for Editing
+      const editData = this.openEditPanel(hitId);
+      if (editData) {
+        return { id: hitId, ...editData };
+      }
+      return { id: hitId, type: null, params: {} }; // Fallback if openEditPanel doesn't find it
+    } else {
+      this.setSelectedId(null);
+      return null;
+    }
   }
 
   getScene() {
@@ -103,6 +147,43 @@ export class App {
     // Reset
     this.pendingType = null;
     this.pendingParams = null;
+    this.requestRender();
+  }
+
+  confirmEdit(params) {
+    if (!this.selectedObjectId) return;
+    const obj = this.scene.objects.find(o => o.id === this.selectedObjectId);
+    if (!obj) return;
+
+    // Update geometry params
+    // This logic mirrors addObject but updates existing
+    // Ideally we would share this "params -> geometry" logic
+
+    // Update Transform
+    if (params.x !== undefined && params.y !== undefined) {
+      // Assume translate is type constant for now
+      if (obj.transform && obj.transform.translate) {
+        obj.transform.translate.value = { x: parseFloat(params.x), y: parseFloat(params.y) };
+      } else {
+        // Create if missing?
+        obj.transform = { translate: { type: 'constant', value: { x: parseFloat(params.x), y: parseFloat(params.y) } } };
+      }
+    }
+
+    // Update Geometry
+    if (obj.kind === 'primitive') {
+      // We need to re-create geometry spec based on new params
+      // But createPrimitiveGeometry creates a NEW spec.
+      // We can reuse it.
+      const newGeo = this.createPrimitiveGeometry(obj.geometry.type, params); // Pass obj.geometry.type to get correct primitive
+      Object.assign(obj.geometry, newGeo);
+    } else if (obj.kind === 'text') {
+      if (params.text) obj.geometry.text = params.text;
+      if (params.size) obj.geometry.size = parseFloat(params.size);
+    }
+
+    console.log('Updated Object:', obj);
+    this.updateExecutionOrder(); // Re-sort in case dependencies changed (none here yet)
     this.requestRender();
   }
 
