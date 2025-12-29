@@ -539,7 +539,7 @@
 
             p.draw = () => {
                 // Draw grid for reference
-                drawGrid(p);
+                PGR.drawGrid(p);
 
                 if (app) {
                     const scene = app.getScene();
@@ -556,7 +556,7 @@
                     // Render using PGR scene with sorted objects
                     const result = PGR.renderScene(renderContext, 0);
 
-                    renderEvaluatedObjects(p, result.objects, app.getSelectedId());
+                    PGR.render(p, result.objects, app.getSelectedId());
 
                     p.pop();
                 } else {
@@ -570,76 +570,7 @@
             };
         };
 
-        function drawGrid(p) {
-            p.push();
-            p.stroke(50);
-            p.strokeWeight(1);
-            const step = 50;
-            const cx = p.width / 2;
-            const cy = p.height / 2;
 
-            // Vertical lines
-            for (let x = cx % step; x < p.width; x += step) {
-                p.line(x, 0, x, p.height);
-            }
-            // Horizontal lines
-            for (let y = cy % step; y < p.height; y += step) {
-                p.line(0, y, p.width, y);
-            }
-
-            // Axes
-            p.stroke(80);
-            p.line(cx, 0, cx, p.height);
-            p.line(0, cy, p.width, cy);
-            p.pop();
-        }
-
-        function renderEvaluatedObjects(p, objects, selectedId) {
-            if (!objects) return;
-
-            for (const obj of objects) {
-                p.push();
-
-                const isSelected = obj.objectId === selectedId;
-
-                // Style
-                if (obj.style) {
-                    if (obj.style.strokeColor) p.stroke(isSelected ? '#ffff00' : obj.style.strokeColor);
-                    if (obj.style.strokeWidth) p.strokeWeight(isSelected ? (obj.style.strokeWidth + 2) : obj.style.strokeWidth);
-                    if (obj.style.fillEnabled && obj.style.fillColor) p.fill(obj.style.fillColor);
-                    else p.noFill();
-                } else {
-                    p.stroke(isSelected ? '#ffff00' : 255);
-                    p.strokeWeight(isSelected ? 3 : 1);
-                    p.noFill();
-                }
-
-                // Geometry
-                if (obj.geometry) {
-                    drawGeometry(p, obj.geometry);
-                }
-
-                p.pop();
-            }
-        }
-
-        function drawGeometry(p, geo) {
-            if (!geo) return;
-            // Handle points array
-            if (geo.points && geo.points.length > 0) {
-                p.beginShape();
-                for (const pt of geo.points) {
-                    p.vertex(pt.x, pt.y);
-                }
-                if (geo.type === 'polygon' || geo.type === 'circle' || geo.type === 'rect') {
-                    p.endShape(p.CLOSE);
-                } else {
-                    p.endShape();
-                }
-            } else if (geo.type === 'point') {
-                p.point(0, 0);
-            }
-        }
 
         function bindUI(app) {
             document.getElementById('btn-clear').onclick = () => app.clearScene();

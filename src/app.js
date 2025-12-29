@@ -1,4 +1,5 @@
-import { renderScene, getSortedExecutionOrder, validateConnection, findHitObject } from './scene.js';
+import { getSortedExecutionOrder, validateConnection } from './scene.js';
+import { evaluateScene as renderScene, findHitObject } from './system/evaluator.js';
 
 export class App {
   constructor(p5Instance) {

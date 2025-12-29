@@ -1,9 +1,13 @@
+/**
+ * @module Core/Geometry
+ * @description Pure geometry evaluation utilities.
+ * @input GeometrySpec, TransformSpec
+ * @output EvaluatedGeometry
+ * @dependencies ./math.js, ./transform.js
+ */
+
 import { computeBounds } from './math.js';
 import { transformPoints, evaluateTransform } from './transform.js';
-
-/**
- * Geometry evaluation utilities.
- */
 
 /**
  * @typedef {'point'|'line'|'polyline'|'polygon'|'rect'|'circle'} PrimitiveKind
@@ -67,14 +71,14 @@ import { transformPoints, evaluateTransform } from './transform.js';
  * @returns {EvaluatedGeometry}
  */
 export function evaluatePrimitiveGeometry(geometry, transform, t) {
-  const basePoints = geometryToPoints(geometry);
-  const worldPoints = transformPoints(evaluateTransform(transform, t), basePoints);
-  const bounds = computeBounds(worldPoints);
-  return {
-    type: geometry.type,
-    points: worldPoints,
-    bounds,
-  };
+    const basePoints = geometryToPoints(geometry);
+    const worldPoints = transformPoints(evaluateTransform(transform, t), basePoints);
+    const bounds = computeBounds(worldPoints);
+    return {
+        type: geometry.type,
+        points: worldPoints,
+        bounds,
+    };
 }
 
 /**
@@ -83,38 +87,38 @@ export function evaluatePrimitiveGeometry(geometry, transform, t) {
  * @returns {Array<{x:number,y:number}>}
  */
 export function geometryToPoints(geometry) {
-  switch (geometry.type) {
-    case 'point':
-      return [{ x: 0, y: 0 }];
-    case 'line':
-      return geometry.points;
-    case 'polyline':
-    case 'polygon':
-      return geometry.points;
-    case 'rect': {
-      const { width, height } = geometry;
-      const x0 = -width / 2;
-      const y0 = -height / 2;
-      const x1 = width / 2;
-      const y1 = height / 2;
-      return [
-        { x: x0, y: y0 },
-        { x: x1, y: y0 },
-        { x: x1, y: y1 },
-        { x: x0, y: y1 },
-      ];
+    switch (geometry.type) {
+        case 'point':
+            return [{ x: 0, y: 0 }];
+        case 'line':
+            return geometry.points;
+        case 'polyline':
+        case 'polygon':
+            return geometry.points;
+        case 'rect': {
+            const { width, height } = geometry;
+            const x0 = -width / 2;
+            const y0 = -height / 2;
+            const x1 = width / 2;
+            const y1 = height / 2;
+            return [
+                { x: x0, y: y0 },
+                { x: x1, y: y0 },
+                { x: x1, y: y1 },
+                { x: x0, y: y1 },
+            ];
+        }
+        case 'circle': {
+            // Approximate the circle with 32 points for evaluation purposes.
+            const steps = 32;
+            const points = [];
+            for (let i = 0; i < steps; i += 1) {
+                const angle = (i / steps) * Math.PI * 2;
+                points.push({ x: Math.cos(angle) * geometry.radius, y: Math.sin(angle) * geometry.radius });
+            }
+            return points;
+        }
+        default:
+            throw new Error(`Unsupported geometry type ${(/** @type {{type:string}} */ (geometry)).type}`);
     }
-    case 'circle': {
-      // Approximate the circle with 32 points for evaluation purposes.
-      const steps = 32;
-      const points = [];
-      for (let i = 0; i < steps; i += 1) {
-        const angle = (i / steps) * Math.PI * 2;
-        points.push({ x: Math.cos(angle) * geometry.radius, y: Math.sin(angle) * geometry.radius });
-      }
-      return points;
-    }
-    default:
-      throw new Error(`Unsupported geometry type ${(/** @type {{type:string}} */ (geometry)).type}`);
-  }
 }

@@ -1,7 +1,9 @@
 /**
- * Basic 2D math helpers used throughout the geometry renderer.
- * The module is intentionally dependency-free to make the evaluation logic
- * runnable in restricted environments.
+ * @module Core/Math
+ * @description Basic 2D math helpers used throughout the geometry renderer.
+ * Checks: Dependency-free.
+ * @input Vec2, Mat3
+ * @output Vec2, Mat3, Bounds
  */
 
 /** @typedef {{x:number, y:number}} Vec2 */
@@ -12,7 +14,7 @@
  * @returns {Mat3}
  */
 export function mat3Identity() {
-  return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    return [1, 0, 0, 0, 1, 0, 0, 0, 1];
 }
 
 /**
@@ -22,17 +24,17 @@ export function mat3Identity() {
  * @returns {Mat3}
  */
 export function mat3Multiply(a, b) {
-  return [
-    a[0] * b[0] + a[3] * b[1] + a[6] * b[2],
-    a[1] * b[0] + a[4] * b[1] + a[7] * b[2],
-    a[2] * b[0] + a[5] * b[1] + a[8] * b[2],
-    a[0] * b[3] + a[3] * b[4] + a[6] * b[5],
-    a[1] * b[3] + a[4] * b[4] + a[7] * b[5],
-    a[2] * b[3] + a[5] * b[4] + a[8] * b[5],
-    a[0] * b[6] + a[3] * b[7] + a[6] * b[8],
-    a[1] * b[6] + a[4] * b[7] + a[7] * b[8],
-    a[2] * b[6] + a[5] * b[7] + a[8] * b[8],
-  ];
+    return [
+        a[0] * b[0] + a[3] * b[1] + a[6] * b[2],
+        a[1] * b[0] + a[4] * b[1] + a[7] * b[2],
+        a[2] * b[0] + a[5] * b[1] + a[8] * b[2],
+        a[0] * b[3] + a[3] * b[4] + a[6] * b[5],
+        a[1] * b[3] + a[4] * b[4] + a[7] * b[5],
+        a[2] * b[3] + a[5] * b[4] + a[8] * b[5],
+        a[0] * b[6] + a[3] * b[7] + a[6] * b[8],
+        a[1] * b[6] + a[4] * b[7] + a[7] * b[8],
+        a[2] * b[6] + a[5] * b[7] + a[8] * b[8],
+    ];
 }
 
 /**
@@ -42,10 +44,10 @@ export function mat3Multiply(a, b) {
  * @returns {Vec2}
  */
 export function applyMat3(m, v) {
-  return {
-    x: m[0] * v.x + m[3] * v.y + m[6],
-    y: m[1] * v.x + m[4] * v.y + m[7],
-  };
+    return {
+        x: m[0] * v.x + m[3] * v.y + m[6],
+        y: m[1] * v.x + m[4] * v.y + m[7],
+    };
 }
 
 /**
@@ -55,7 +57,7 @@ export function applyMat3(m, v) {
  * @returns {Mat3}
  */
 export function mat3Translate(tx, ty) {
-  return [1, 0, 0, 0, 1, 0, tx, ty, 1];
+    return [1, 0, 0, 0, 1, 0, tx, ty, 1];
 }
 
 /**
@@ -65,7 +67,7 @@ export function mat3Translate(tx, ty) {
  * @returns {Mat3}
  */
 export function mat3Scale(sx, sy) {
-  return [sx, 0, 0, 0, sy, 0, 0, 0, 1];
+    return [sx, 0, 0, 0, sy, 0, 0, 0, 1];
 }
 
 /**
@@ -74,9 +76,9 @@ export function mat3Scale(sx, sy) {
  * @returns {Mat3}
  */
 export function mat3Rotate(angle) {
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
-  return [c, s, 0, -s, c, 0, 0, 0, 1];
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return [c, s, 0, -s, c, 0, 0, 0, 1];
 }
 
 /**
@@ -86,7 +88,7 @@ export function mat3Rotate(angle) {
  * @returns {Mat3}
  */
 export function mat3Shear(shx, shy) {
-  return [1, shy, 0, shx, 1, 0, 0, 0, 1];
+    return [1, shy, 0, shx, 1, 0, 0, 0, 1];
 }
 
 /**
@@ -95,18 +97,18 @@ export function mat3Shear(shx, shy) {
  * @returns {{min: Vec2, max: Vec2} | null}
  */
 export function computeBounds(points) {
-  if (!points.length) return null;
-  let minX = points[0].x;
-  let minY = points[0].y;
-  let maxX = points[0].x;
-  let maxY = points[0].y;
-  for (const p of points) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
-  }
-  return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+    if (!points.length) return null;
+    let minX = points[0].x;
+    let minY = points[0].y;
+    let maxX = points[0].x;
+    let maxY = points[0].y;
+    for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+    }
+    return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }
 
 /**
@@ -117,7 +119,7 @@ export function computeBounds(points) {
  * @returns {number}
  */
 export function lerp(a, b, t) {
-  return a + (b - a) * t;
+    return a + (b - a) * t;
 }
 
 /**
@@ -126,8 +128,8 @@ export function lerp(a, b, t) {
  * @returns {number}
  */
 export function normalizeAngle(angle) {
-  let a = angle;
-  while (a <= -Math.PI) a += Math.PI * 2;
-  while (a > Math.PI) a -= Math.PI * 2;
-  return a;
+    let a = angle;
+    while (a <= -Math.PI) a += Math.PI * 2;
+    while (a > Math.PI) a -= Math.PI * 2;
+    return a;
 }
