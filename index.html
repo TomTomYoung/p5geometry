@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGR: Process Geometry Renderer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #222;
+            color: #ccc;
+            font-family: sans-serif;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="canvas-container"></div>
+
+    <div id="ui-panel">
+        <header>
+            <h1>PGR v0.9</h1>
+            <div class="header-controls">
+                <button id="btn-clear">Clear Scene</button>
+            </div>
+        </header>
+
+        <section>
+            <h3>Primitives</h3>
+            <div class="button-grid">
+                <button id="btn-add-circle">Circle</button>
+                <button id="btn-add-rect">Rect</button>
+                <button id="btn-add-line">Line</button>
+                <button id="btn-add-poly">Polygon</button>
+            </div>
+        </section>
+
+        <section>
+            <h3>Text</h3>
+            <div class="button-grid">
+                <button id="btn-add-text">Add Text</button>
+            </div>
+        </section>
+
+        <section>
+            <h3>Generators</h3>
+            <div class="button-grid">
+                <button id="btn-gen-grid">Grid</button>
+                <button id="btn-gen-radial">Radial</button>
+            </div>
+            <div class="hint" id="selection-hint">Select an object to generate patterns</div>
+        </section>
+
+        <!-- Property Panel (Hidden by default, overlays or pushes content) -->
+        <div id="property-panel" class="hidden">
+            <h3 id="prop-panel-title">New Object</h3>
+            <div id="prop-fields"></div>
+            <div class="prop-actions">
+                <button id="btn-prop-create" class="primary">Create</button>
+                <button id="btn-prop-cancel">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 280px;
+            background: rgba(30, 30, 30, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            font-family: 'Inter', sans-serif;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        #ui-panel h1 {
+            font-size: 1.2rem;
+            margin: 0 0 16px 0;
+            color: #fff;
+            border-bottom: 1px solid #444;
+            padding-bottom: 8px;
+        }
+
+        #ui-panel section {
+            margin-bottom: 20px;
+        }
+
+        #ui-panel h3 {
+            font-size: 0.9rem;
+            margin: 0 0 8px 0;
+            color: #aaa;
+            text-transform: uppercase;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .hint {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: #111;
+            border: 1px solid #555;
+            color: #eee;
+            padding: 6px 8px;
+            border-radius: 4px;
+        }
+
+        button {
+            background: #333;
+            color: #eee;
+            border: 1px solid #555;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        button:hover {
+            background: #444;
+            border-color: #777;
+        }
+
+        button:active {
+            background: #222;
+        }
+
+        /* Property Panel Styles */
+        #property-panel {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #444;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 4px;
+        }
+
+        #property-panel.hidden {
+            display: none;
+        }
+
+        .prop-field {
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .prop-field label {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-right: 8px;
+        }
+
+        .prop-field input {
+            width: 80px;
+            background: #111;
+            border: 1px solid #555;
+            color: #fff;
+            padding: 4px;
+            border-radius: 2px;
+            text-align: right;
+        }
+
+        .prop-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .prop-actions button {
+            flex: 1;
+        }
+
+        .prop-actions button.primary {
+            background: #4a90e2;
+            border-color: #357abd;
+        }
+
+        .prop-actions button.primary:hover {
+            background: #357abd;
+        }
+    </style>
+
+    <script type="module">
+        import * as PGR from './src/index.js';
+        import { App } from './src/app.js';
+
+        const sketch = (p) => {
+            let app = null;
+
+            p.setup = () => {
+                p.createCanvas(window.innerWidth, window.innerHeight);
+                p.noLoop();
+
+                // Initialize App
+                app = new App(p);
+                console.log('PGR App Initialized');
+
+                // Bind UI
+                bindUI(app);
+            };
+
+            p.draw = () => {
+                p.background(30);
+
+                // Draw grid for reference
+                drawGrid(p);
+
+                if (app) {
+                    const scene = app.getScene();
+                    p.push();
+                    // Center origin
+                    p.translate(p.width / 2, p.height / 2);
+
+                    // Render using PGR scene
+                    const result = PGR.renderScene(scene, 0);
+
+                    renderEvaluatedObjects(p, result.objects);
+
+                    p.pop();
+                }
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(window.innerWidth, window.innerHeight);
+                if (app) app.requestRender();
+            };
+        };
+
+        function drawGrid(p) {
+            p.push();
+            p.stroke(50);
+            p.strokeWeight(1);
+            const step = 50;
+            const cx = p.width / 2;
+            const cy = p.height / 2;
+
+            // Vertical lines
+            for (let x = cx % step; x < p.width; x += step) {
+                p.line(x, 0, x, p.height);
+            }
+            // Horizontal lines
+            for (let y = cy % step; y < p.height; y += step) {
+                p.line(0, y, p.width, y);
+            }
+
+            // Axes
+            p.stroke(80);
+            p.line(cx, 0, cx, p.height);
+            p.line(0, cy, p.width, cy);
+            p.pop();
+        }
+
+        function renderEvaluatedObjects(p, objects, selectedId) {
+            if (!objects) return;
+
+            for (const obj of objects) {
+                p.push();
+
+                const isSelected = obj.objectId === selectedId;
+
+                // Style
+                if (obj.style) {
+                    if (obj.style.strokeColor) p.stroke(isSelected ? '#ffff00' : obj.style.strokeColor);
+                    if (obj.style.strokeWidth) p.strokeWeight(isSelected ? (obj.style.strokeWidth + 2) : obj.style.strokeWidth);
+                    if (obj.style.fillEnabled && obj.style.fillColor) p.fill(obj.style.fillColor);
+                    else p.noFill();
+                } else {
+                    p.stroke(isSelected ? '#ffff00' : 255);
+                    p.strokeWeight(isSelected ? 3 : 1);
+                    p.noFill();
+                }
+
+                // Geometry
+                if (obj.geometry) {
+                    drawGeometry(p, obj.geometry);
+                }
+
+                p.pop();
+            }
+        }
+
+        function drawGeometry(p, geo) {
+            if (!geo) return;
+            // Handle points array
+            if (geo.points && geo.points.length > 0) {
+                p.beginShape();
+                for (const pt of geo.points) {
+                    p.vertex(pt.x, pt.y);
+                }
+                if (geo.type === 'polygon' || geo.type === 'circle' || geo.type === 'rect') {
+                    p.endShape(p.CLOSE);
+                } else {
+                    p.endShape();
+                }
+            } else if (geo.type === 'point') {
+                p.point(0, 0);
+            }
+        }
+
+        function bindUI(app) {
+            document.getElementById('btn-clear').onclick = () => app.clearScene();
+
+            // Generic handler for creation buttons
+            const openPanel = (type) => {
+                const params = app.openCreationPanel(type);
+                renderPropPanel(app, type, params);
+            };
+
+            document.getElementById('btn-add-circle').onclick = () => openPanel('circle');
+            document.getElementById('btn-add-rect').onclick = () => openPanel('rect');
+            document.getElementById('btn-add-line').onclick = () => openPanel('line');
+            document.getElementById('btn-add-poly').onclick = () => openPanel('polygon');
+            document.getElementById('btn-add-text').onclick = () => openPanel('text');
+
+            document.getElementById('btn-gen-grid').onclick = () => openPanel('grid');
+            document.getElementById('btn-gen-radial').onclick = () => openPanel('radial');
+
+            // Panel Actions
+            document.getElementById('btn-prop-cancel').onclick = () => {
+                document.getElementById('property-panel').classList.add('hidden');
+            };
+
+            document.getElementById('btn-prop-create').onclick = () => {
+                const fields = document.querySelectorAll('.prop-field input');
+                const params = {};
+                fields.forEach(f => {
+                    params[f.name] = f.value;
+                });
+                app.confirmCreation(params);
+                document.getElementById('property-panel').classList.add('hidden');
+                updateSelectionHint(app);
+            };
+        }
+
+        function renderPropPanel(app, type, params) {
+            const panel = document.getElementById('property-panel');
+            const title = document.getElementById('prop-panel-title');
+            const container = document.getElementById('prop-fields');
+
+            panel.classList.remove('hidden');
+            title.innerText = `New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            container.innerHTML = '';
+
+            // Dynamic fields creation based on params
+            for (const [key, value] of Object.entries(params)) {
+                if (key === 'type') continue; // Skip internal type
+
+                const div = document.createElement('div');
+                div.className = 'prop-field';
+
+                const label = document.createElement('label');
+                label.innerText = key;
+
+                const input = document.createElement('input');
+                input.name = key;
+                input.value = value;
+                // Simple type guess
+                if (typeof value === 'number') input.type = 'number';
+                else input.type = 'text';
+
+                div.appendChild(label);
+                div.appendChild(input);
+                container.appendChild(div);
+            }
+        }
+
+        function updateSelectionHint(app) {
+            const hint = document.getElementById('selection-hint');
+            if (app.getSelectedId()) {
+                hint.innerText = "Active Object: " + app.getSelectedId();
+                hint.style.color = "#88cc88";
+            } else {
+                hint.innerText = "Select an object to generate patterns";
+                hint.style.color = "#cc8888";
+            }
+        }
+
+        new p5(sketch, document.getElementById('canvas-container'));
+    </script>
+</body>
+
+</html>
