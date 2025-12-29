@@ -1,0 +1,18 @@
+{
+  "name": "p5geometry",
+  "version": "1.0.0",
+  "description": "Lightweight runtime scaffolding for the Process Geometry Renderer (PGR)",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "node --check src/index.js"
+  },
+  "keywords": [
+    "p5.js",
+    "geometry",
+    "renderer",
+    "scene-graph"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "module"
+}
