@@ -74,6 +74,15 @@
             </div>
         </section>
 
+        <section>
+            <h3>Playback</h3>
+            <div class="button-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                <button id="btn-play">Play</button>
+                <button id="btn-pause">Pause</button>
+                <button id="btn-reset">Reset</button>
+            </div>
+        </section>
+
         <!-- Property Panel (Hidden by default, overlays or pushes content) -->
         <div id="property-panel" class="hidden">
             <h3 id="prop-panel-title">New Object</h3>
@@ -406,6 +415,11 @@
                     app.addStyle({ name: 'Random Style', strokeColor: '#' + Math.floor(Math.random() * 16777215).toString(16) });
                 };
             }
+
+            // Playback Bindings
+            document.getElementById('btn-play').onclick = () => app.play();
+            document.getElementById('btn-pause').onclick = () => app.pause();
+            document.getElementById('btn-reset').onclick = () => app.resetTimeline();
 
             // Panel Actions
             document.getElementById('btn-prop-cancel').onclick = () => {

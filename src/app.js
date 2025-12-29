@@ -38,11 +38,105 @@ export class App {
     console.log('Execution Order Updated:', this.executionOrder.map(o => `${o.id} (Rank ?) `));
   }
 
+  // Playback Control
+  play() {
+    if (!this.scene.timeline.isPlaying) {
+      if (this.scene.timeline.t === 0) {
+        this.captureInitialState();
+      }
+      this.scene.timeline.isPlaying = true;
+      this.renderLoop(); // Start loop
+      console.log('Playback Started');
+    }
+  }
+
+  pause() {
+    this.scene.timeline.isPlaying = false;
+    console.log('Playback Paused');
+  }
+
+  resetTimeline() {
+    this.scene.timeline.isPlaying = false; // Stop first
+    this.scene.timeline.t = 0;
+    this.restoreInitialState();
+    this.requestRender();
+    console.log('Timeline Reset');
+  }
+
+  captureInitialState() {
+    // Deep clone object transforms to cache
+    this.initialStateCache = new Map();
+    for (const obj of this.scene.objects) {
+      if (obj.transform && obj.transform.translate) { // Only caching translate for now
+        this.initialStateCache.set(obj.id, {
+          x: obj.transform.translate.value.x,
+          y: obj.transform.translate.value.y
+        });
+      }
+    }
+  }
+
+  restoreInitialState() {
+    if (!this.initialStateCache) return;
+
+    for (const obj of this.scene.objects) {
+      if (this.initialStateCache.has(obj.id)) {
+        const cached = this.initialStateCache.get(obj.id);
+        if (!obj.transform) obj.transform = { translate: { type: 'constant', value: { x: 0, y: 0 } } };
+        if (!obj.transform.translate) obj.transform.translate = { type: 'constant', value: { x: 0, y: 0 } };
+
+        obj.transform.translate.value.x = cached.x;
+        obj.transform.translate.value.y = cached.y;
+      }
+    }
+  }
+
   // Update loop
   renderLoop() {
     if (this.scene.timeline.isPlaying) {
+      this.scene.timeline.t += 1; // Increment time frame
+
+      // Update Animation/Deltas (Basic Delta System Integration)
+      // Iterate sorted objects and apply updates?
+      this.updateState();
+
       this.p5.redraw();
       requestAnimationFrame(this.renderLoop);
+    }
+  }
+
+  updateState() {
+    // Apply Component Logic (Physics)
+    // Iterate sorted objects and check for attached components
+    if (!this.scene.components) return;
+
+    const componentMap = new Map(this.scene.components.map(c => [c.id, c]));
+
+    for (const obj of this.scene.objects) {
+      if (obj.components && obj.components.physics) {
+        const physId = obj.components.physics;
+        const physComp = componentMap.get(physId);
+
+        if (physComp && physComp.delta) {
+          // Apply Physics Delta
+          if (!obj.transform) obj.transform = {};
+          if (!obj.transform.translate) obj.transform.translate = { type: 'constant', value: { x: 0, y: 0 } };
+
+          if (obj.transform.translate.type === 'constant') {
+            if (physComp.delta.x) obj.transform.translate.value.x += physComp.delta.x;
+            if (physComp.delta.y) obj.transform.translate.value.y += physComp.delta.y;
+          }
+        }
+      }
+      // Fallback legacy delta support (optional, can remove if full refactor)
+      else if (obj.delta) {
+        if (!obj.transform) obj.transform = {};
+        if (!obj.transform.translate) obj.transform.translate = { type: 'constant', value: { x: 0, y: 0 } };
+        if (obj.transform.translate.type === 'constant') {
+          obj.transform.translate.value.x += (obj.delta.x || 0);
+          obj.transform.translate.value.y += (obj.delta.y || 0);
+        }
+      }
     }
   }
 
@@ -155,18 +249,28 @@ export class App {
     const obj = this.scene.objects.find(o => o.id === this.selectedObjectId);
     if (!obj) return;
 
-    // Update geometry params
-    // This logic mirrors addObject but updates existing
-    // Ideally we would share this "params -> geometry" logic
+    // PARSE HELPER
+    const parse = (v, isNum = true) => {
+      if (typeof v === 'string' && v.startsWith('@')) {
+        // Reference Syntax: @objId.propName
+        const parts = v.substring(1).split('.');
+        if (parts.length >= 2) {
+          const targetId = parts[0];
+          const targetProp = parts.slice(1).join('.');
+          return { type: 'ref', targetId, targetProp };
+        }
+      }
+      return isNum ? parseFloat(v) : v;
+    };
 
     // Update Transform
     if (params.x !== undefined && params.y !== undefined) {
       // Assume translate is type constant for now
       if (obj.transform && obj.transform.translate) {
-        obj.transform.translate.value = { x: parseFloat(params.x), y: parseFloat(params.y) };
+        obj.transform.translate.value = { x: parse(params.x), y: parse(params.y) };
       } else {
-        // Create if missing?
-        obj.transform = { translate: { type: 'constant', value: { x: parseFloat(params.x), y: parseFloat(params.y) } } };
+        // Create if missing
+        obj.transform = { translate: { type: 'constant', value: { x: parse(params.x), y: parse(params.y) } } };
       }
     }
 
@@ -174,82 +278,60 @@ export class App {
     if (obj.kind === 'primitive') {
       // We need to re-create geometry spec based on new params
       // But createPrimitiveGeometry creates a NEW spec.
-      // We can reuse it.
-      const newGeo = this.createPrimitiveGeometry(obj.geometry.type, params); // Pass obj.geometry.type to get correct primitive
-      Object.assign(obj.geometry, newGeo);
+      // However, createPrimitiveGeometry expects raw numbers for things like radius.
+      // If we pass a REF object, createPrimitiveGeometry might break or just store it?
+      // I need to update createPrimitiveGeometry to accommodate partial params or handle assignment differently.
+      // Or just assign directly to obj.geometry keys.
+
+      if (obj.geometry.type === 'circle') {
+        if (params.radius) obj.geometry.radius = parse(params.radius);
+      } else if (obj.geometry.type === 'rect') {
+        if (params.width) obj.geometry.width = parse(params.width);
+        if (params.height) obj.geometry.height = parse(params.height);
+      }
+      // Line/Poly - minimal ref support for now
+
     } else if (obj.kind === 'text') {
-      if (params.text) obj.geometry.text = params.text;
-      if (params.size) obj.geometry.size = parseFloat(params.size);
+      if (params.text) obj.geometry.text = parse(params.text, false); // false = not number forced
+      if (params.size) obj.geometry.size = parse(params.size);
+    }
+
+    // Update Delta (Physics Component)
+    const moveX = parseFloat(params.moveX);
+    const moveY = parseFloat(params.moveY);
+
+    if (!isNaN(moveX) || !isNaN(moveY)) {
+      // Ensure components structure
+      if (!obj.components) obj.components = {};
+
+      if (obj.components.physics) {
+        // Update existing
+        const physComp = this.scene.components.find(c => c.id === obj.components.physics);
+        if (physComp) {
+          physComp.delta = { x: moveX || 0, y: moveY || 0 };
+        }
+      } else {
+        // Create new Physics Component
+        const physId = `phys_${Date.now()}`;
+        const physComp = {
+          id: physId,
+          type: 'physics',
+          delta: { x: moveX || 0, y: moveY || 0 }
+        };
+        if (!this.scene.components) this.scene.components = [];
+        this.scene.components.push(physComp);
+        obj.components.physics = physId;
+      }
     }
 
     console.log('Updated Object:', obj);
-    this.updateExecutionOrder(); // Re-sort in case dependencies changed (none here yet)
-    this.requestRender();
-  }
-
-  addObject(type, params) {
-    const kind = type === 'text' ? 'text' : 'primitive';
-    const id = `obj_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const newObj = {
-      id,
-      kind,
-      name: `${type}_${this.scene.objects.length + 1}`,
-      visibility: true,
-      transform: {
-        matrix: { type: 'constant', value: [1, 0, 0, 0, 1, 0, 0, 0, 1] }
-      },
-      style: {
-        strokeColor: '#ffffff',
-        strokeWidth: 1,
-        fillEnabled: false
-      },
-      geometry: {}
-    };
-
-    const x = params.x !== undefined ? parseFloat(params.x) : (Math.random() - 0.5) * 400;
-    const y = params.y !== undefined ? parseFloat(params.y) : (Math.random() - 0.5) * 400;
-    newObj.transform = {
-      translate: { type: 'constant', value: { x, y } }
-    };
-
-    if (kind === 'primitive') {
-      newObj.geometry = this.createPrimitiveGeometry(type, params);
-    } else if (kind === 'text') {
-      newObj.geometry = {
-        type: 'text',
-        fontAssetId: 'default',
-        text: params.text || 'Hello',
-        size: parseFloat(params.size) || 40
-      };
-    }
-
-    this.scene.objects.push(newObj);
-    this.setSelectedId(newObj.id);
-    console.log('Added object:', newObj);
-
-    // Update Graph
     this.updateExecutionOrder();
     this.requestRender();
-    return newObj;
   }
 
   addGenerator(type, params) {
-    if (!this.selectedObjectId) {
-      console.warn('No object selected for generator');
-      return;
-    }
-    const sourceExists = this.scene.objects.some(o => o.id === this.selectedObjectId);
-    if (!sourceExists) return;
-
-    // Validate Connection (Pre-check)
-    // Here we are creating a new Generator that connects Selected -> New Output.
-    // Since New Output is brand new, it cannot cause a cycle unless we are connecting TO an existing object (which we aren't here yet).
-    // So simple creation is safe. But if we supported "Connect to existing", we would need:
-    // if (!validateConnection(this.scene, this.selectedObjectId, targetId)) return;
-
-    const id = `gen_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const generator = {
-      id,
+      id: `gen_${Date.now()}`,
       type,
       inputIds: [this.selectedObjectId],
       params: {}

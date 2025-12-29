@@ -440,6 +440,61 @@ function resolveStyle(obj, styles) {
 }
 
 /**
+ * Resolves a single parameter which might be a constant or a reference.
+ * @param {any} param
+ * @param {Map<string, EvaluatedObject>} evaluatedMap
+ * @returns {any}
+ */
+function resolveParam(param, evaluatedMap) {
+  if (param && typeof param === 'object' && param.type === 'ref') {
+    const target = evaluatedMap.get(param.targetId);
+    if (!target) {
+      console.warn(`Reference target not found: ${param.targetId}`);
+      return 0; // Default fallback
+    }
+
+    // Resolve Target Property
+    // target is an EvaluatedObject { objectId, geometry, style ... }
+    // geometry might be { type: 'circle', radius: 50, ... } (Resolved Geometry)
+    // We need to know what 'targetProp' refers to.
+    // e.g. "geometry.radius", "transform.x" (if we evaluated transform)
+    // Simpler: targetProp = "radius" implies looking into geometry?
+    // Or "x" implies transform?
+
+    // Let's implement dotted access or simple mapping
+    const keys = param.targetProp.split('.');
+    let val = target;
+    for (const key of keys) {
+      if (val && val[key] !== undefined) {
+        val = val[key];
+      } else {
+        // Try looking inside geometry if key not found on top level?
+        // Or enforce specific paths like "geometry.radius"
+        if (val && val.geometry && val.geometry[key] !== undefined) {
+          val = val.geometry[key];
+        } else {
+          console.warn(`Property not found: ${param.targetProp} on ${param.targetId}`);
+          return 0;
+        }
+      }
+    }
+    return val;
+  }
+  return param;
+}
+
+/**
+ * Resolves all properties of an object (shallow).
+ */
+function resolveObjectParams(params, evaluatedMap) {
+  const resolved = {};
+  for (const [key, val] of Object.entries(params)) {
+    resolved[key] = resolveParam(val, evaluatedMap);
+  }
+  return resolved;
+}
+
+/**
  * @param {SceneObject[]} objects
  * @param {number} t
  * @param {Record<string, Asset>} assets
@@ -449,26 +504,59 @@ function resolveStyle(obj, styles) {
  */
 function evaluateObjects(objects, t, assets, warnings, globalStyles) {
   const evaluated = [];
+  const evaluatedMap = new Map(); // id -> EvaluatedObject
+
   for (const obj of objects) {
     if (obj.visibility === false) continue;
 
-    // Resolve Style (if globalStyles provided, otherwise use obj.style as is)
-    // Note: scene.styles needs to be passed down from renderScene
+    // Resolve Style
     const style = globalStyles ? resolveStyle(obj, globalStyles) : obj.style;
 
+    // Resolve Geometry Params (for Refs)
+    // We assume obj.geometry keys are the params.
+    const resolvedGeo = resolveObjectParams(obj.geometry, evaluatedMap);
+
+    // Resolve Transform (Translate)
+    // obj.transform might be complex. For now, check translate value.
+    const transform = obj.transform ? { ...obj.transform } : undefined;
+    if (transform && transform.translate && transform.translate.type === 'constant') {
+      const tx = resolveParam(transform.translate.value.x, evaluatedMap);
+      const ty = resolveParam(transform.translate.value.y, evaluatedMap);
+      transform.translate.value = { x: tx, y: ty };
+    }
+
     if (obj.kind === 'primitive') {
-      evaluated.push({ objectId: obj.id, geometry: evaluatePrimitiveGeometry(obj.geometry, obj.transform, t), style: style });
+      const evalGeo = evaluatePrimitiveGeometry(resolvedGeo, transform, t);
+      const evalObj = { objectId: obj.id, geometry: evalGeo, style: style };
+      evaluated.push(evalObj);
+      evaluatedMap.set(obj.id, evalObj);
+
     } else if (obj.kind === 'text') {
       const asset = assets[obj.geometry.fontAssetId];
       if (!asset || asset.loadState !== 'ready') {
         warnings.push(`Text object ${obj.id} missing font asset ${obj.geometry.fontAssetId}`);
         continue;
       }
-      // Represent text as a bounding box placeholder using rect geometry.
-      const size = obj.geometry.size || 16;
-      const length = 'text' in obj.geometry ? obj.geometry.text.length : 1;
-      const placeholder = evaluatePrimitiveGeometry({ type: 'rect', width: size * 0.6 * length, height: size }, obj.transform, t);
-      evaluated.push({ objectId: obj.id, geometry: placeholder, style: obj.style, warnings: ['Text rendering placeholder'] });
+
+      // Resolve text/size parameters
+      const text = resolveParam(obj.geometry.text, evaluatedMap);
+      const size = resolveParam(obj.geometry.size, evaluatedMap);
+
+      // Let's look at the original evaluateObjects loop below...
+      // It had `else if (obj.kind === 'text')` block.
+
+      // We need to construct the result similarly.
+      // But we can attach the 'resolved' values.
+
+      // Original text placeholder logic, adapted to use resolved values
+      const actualSize = size || 16;
+      const actualText = typeof text === 'string' ? text : 'text'; // Fallback if text param is not a string
+      const length = actualText.length;
+      const placeholder = evaluatePrimitiveGeometry({ type: 'rect', width: actualSize * 0.6 * length, height: actualSize }, transform, t);
+      const evalObj = { objectId: obj.id, geometry: placeholder, style: style, warnings: ['Text rendering placeholder'] };
+      evaluated.push(evalObj);
+      evaluatedMap.set(obj.id, evalObj);
+
     } else {
       warnings.push(`Object ${obj.id} of kind ${obj.kind} evaluation not implemented`);
     }
